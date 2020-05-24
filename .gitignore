@@ -1,0 +1,5 @@
+/bin
+/syntect
+/target
+**/*.rs.bk
+Cargo.lock
