@@ -238,10 +238,13 @@ fn write_to_file(path_string: &String, json: &String) {
 
 pub fn tokenize(ss: &SyntaxSet, path: String) -> Result<String, String> {
     let syntax = ss.find_syntax_by_name("CFML").unwrap();
-    let f = File::open(&path).unwrap();
-
     let mut state = ParseState::new(syntax);
-    let mut reader = BufReader::new(f);
+
+    let mut reader: Box<dyn BufRead> = match path.as_str() {
+        "-" => Box::new(BufReader::new(std::io::stdin())),
+        _ => Box::new(BufReader::new(File::open(&path).unwrap()))
+    };
+
     let mut line = String::new();
     let mut stack = ScopeStack::new();
 
@@ -291,9 +294,12 @@ pub fn parse(ss: &SyntaxSet, path: String) -> Result<String, String> {
     }
 
     let mut state = ParseState::new(syntax);
-    let f = File::open(&path).unwrap();
 
-    let mut reader = BufReader::new(f);
+    let mut reader: Box<dyn BufRead> = match path.as_str() {
+        "-" => Box::new(BufReader::new(std::io::stdin())),
+        _ => Box::new(BufReader::new(File::open(&path).unwrap()))
+    };
+
     let mut line = String::new();
     let mut stack = ScopeStack::new();
 

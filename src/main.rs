@@ -74,7 +74,7 @@ impl Config {
                 }
             }
             None => {
-                if src_path.ends_with(".cfc") || src_path.ends_with(".cfm") {
+                if src_path.ends_with(".cfc") || src_path.ends_with(".cfm") || src_path == "-" {
                     let config = FileConfig { cmd, src_path };
                     Ok(Config::File(config))
                 } else {
