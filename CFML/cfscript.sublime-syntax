@@ -10,7 +10,6 @@
 #   https://github.com/sublimehq/Packages/blob/master/JavaScript/JavaScript.sublime-syntax
 #   Thank you Will Bond (@wbond) and Thomas Smith (@Thom1729)
 #   for an awesome syntax to base this on.
-
 name: CFML Script
 scope: source.cfml.script
 hidden: true
@@ -28,7 +27,7 @@ variables:
 
   sql_lookahead: >-
     (?x:
-      (?i:select\s+($|\*|{{dot_path_identifier}}\s*(?:(?:\s+as\s+{{identifier}}\s*)?,|$|\s+from)))|
+      (?i:select\s+($|\*|top\b|{{dot_path_identifier}}\s*(?:(?:\s+as\s+{{identifier}}\s*)?,|$|\s+from)))|
       (?i:from\s+($|{{dot_path_identifier}}(?:\s*{{identifier}})?\s*$))|
       (?i:where\s+($|{{dot_path_identifier}}\s*=))|
       (?i:(?:left\s+)?(?:outer\s+|inner\s+)?join(\s+|\s*$))|
@@ -206,9 +205,7 @@ contexts:
                     - expect-case-colon
                 - include: statements
             - include: else-pop
-        -
-
-            - include: parenthesized-expression
+        -   - include: parenthesized-expression
             - include: else-pop
     - match: \bdo\b
       scope: keyword.control.loop.cfml
@@ -221,9 +218,7 @@ contexts:
               scope: keyword.control.loop.cfml
               pop: true
             - include: else-pop
-        -
-
-            - include: block-scope
+        -   - include: block-scope
             - include: else-pop
     - match: \b(?:for)\b
       scope: keyword.control.loop.cfml
@@ -523,7 +518,7 @@ contexts:
                   pop: true
                 - match: ','
                   scope: punctuation.separator.function-call.method.cfml
-                - match: \b({{identifier}})\s*(?:(=)(?!=)|(:))
+                - match: \b({{identifier}})\s*(?:(=)(?![=>])|(:))
                   captures:
                     1: entity.other.method-parameter.cfml
                     2: keyword.operator.assignment.binary.cfml
@@ -550,7 +545,7 @@ contexts:
       scope: keyword.operator.word.new.prefix.cfml
 
   binary-operators:
-    - match: \bin\b
+    - match: \b(?i:in)\b
       scope: keyword.operator.binary.cfml
       push: expression-begin
     - match: '&&|\|\|'
@@ -766,10 +761,9 @@ contexts:
               scope: storage.type.function.arrow.cfml
               pop: true
             - include: else-pop
-        -
-
-            - include: arrow-function-parameters
+        -   - include: arrow-function-parameters
             - include: else-pop
+
   arrow-function-parameters:
     - match: '{{identifier}}'
       scope: variable.parameter.function.cfml
@@ -851,7 +845,6 @@ contexts:
         - include: struct-contents
         - match: ','
           scope: punctuation.separator.struct-literal.cfml
-
 
   struct-contents:
     - match: (?=('[^']*'|"[^"]*"|{{identifier}})\s*(:|=)({{func_assignment_lookahead}}|{{arrow_func_lookahead}}))
@@ -940,24 +933,24 @@ contexts:
               scope: punctuation.section.brackets.end.cfml
               pop: true
             - include: expression-push
-        -   - set:
+        -   - scope: punctuation.definition.string.begin.cfml
+              set:
                 -   - meta_scope: meta.string.quoted.single.cfml string.quoted.single.cfml
-                    - pop: true
+                    - scope: punctuation.definition.string.end.cfml
+                      pop: true
                       match: "'"
-                      scope: punctuation.definition.string.end.cfml
                 -   - include: storage-types
                     - include: else-pop
               match: "'"
-              scope: punctuation.definition.string.begin.cfml
-            - set:
+            - scope: punctuation.definition.string.begin.cfml
+              set:
                 -   - meta_scope: meta.string.quoted.double.cfml string.quoted.double.cfml
-                    - pop: true
+                    - scope: punctuation.definition.string.end.cfml
+                      pop: true
                       match: '"'
-                      scope: punctuation.definition.string.end.cfml
                 -   - include: storage-types
                     - include: else-pop
               match: '"'
-              scope: punctuation.definition.string.begin.cfml
     - include: else-pop
 
   property-access:
@@ -1035,7 +1028,7 @@ contexts:
                       pop: true
                     - match: ','
                       scope: punctuation.separator.function-call.cfml
-                    - match: \b({{identifier}})\s*(?:(=)(?!=)|(:))
+                    - match: \b({{identifier}})\s*(?:(=)(?![=>])|(:))
                       captures:
                         1: entity.other.function-parameter.cfml
                         2: keyword.operator.assignment.binary.cfml
@@ -1089,7 +1082,7 @@ contexts:
                   pop: true
                 - match: ','
                   scope: punctuation.separator.function-call.method.cfml
-                - match: \b({{identifier}})\s*(?:(=)(?!=)|(:))
+                - match: \b({{identifier}})\s*(?:(=)(?![=>])|(:))
                   captures:
                     1: entity.other.method-parameter.cfml
                     2: keyword.operator.assignment.binary.cfml
@@ -1097,6 +1090,7 @@ contexts:
                   push: expression-no-comma
                 - include: expression-no-comma-push
             - include: else-pop
+
   static-method-call:
     - match: ({{identifier}})\s*(?=\()
       captures:
@@ -1113,7 +1107,7 @@ contexts:
                   pop: true
                 - match: ','
                   scope: punctuation.separator.function-call.method.cfml
-                - match: \b({{identifier}})\s*(?:(=)(?!=)|(:))
+                - match: \b({{identifier}})\s*(?:(=)(?![=>])|(:))
                   captures:
                     1: entity.other.method-parameter.cfml
                     2: keyword.operator.assignment.binary.cfml
@@ -1121,6 +1115,7 @@ contexts:
                   push: expression-no-comma
                 - include: expression-no-comma-push
             - include: else-pop
+
   cfml-scopes:
     - match: \b(?i:super)\b
       scope: variable.language.super.cfml
@@ -1464,7 +1459,7 @@ contexts:
           pop: true
         - match: ','
           scope: punctuation.separator.function-call.support.cfml
-        - match: \b({{identifier}})\s*(?:(=)(?!=)|(:))
+        - match: \b({{identifier}})\s*(?:(=)(?![=>])|(:))
           captures:
             1: entity.other.function-parameter.cfml
             2: keyword.operator.assignment.binary.cfml
@@ -1472,6 +1467,7 @@ contexts:
           push: expression-no-comma
         - include: expression-no-comma-push
     - include: else-pop
+
   support-method-call:
     - match: |-
         (?x)(?i)\b(add|addautofilter|addborder|addcolumn|addfreezepane|addimage|addinfo|addpagebreaks
@@ -1516,7 +1512,7 @@ contexts:
                   pop: true
                 - match: ','
                   scope: punctuation.separator.function-call.method.support.cfml
-                - match: \b({{identifier}})\s*(?:(=)(?!=)|(:))
+                - match: \b({{identifier}})\s*(?:(=)(?![=>])|(:))
                   captures:
                     1: entity.other.method-parameter.cfml
                     2: keyword.operator.assignment.binary.cfml

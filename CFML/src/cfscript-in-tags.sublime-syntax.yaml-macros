@@ -2,7 +2,7 @@
 %TAG ! tag:yaml-macros:yamlmacros.lib.extend,yamlmacros.lib.include:
 ---
 !apply
-  - !include cfscript.sublime-syntax.yaml-macros
+  - !include_resource Packages/CFML/syntaxes/src/cfscript.sublime-syntax.yaml-macros
   - !merge
     name: CFML Script (Tags)
     scope: source.cfml.script.tags
