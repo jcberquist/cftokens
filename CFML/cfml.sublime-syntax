@@ -21,10 +21,12 @@ contexts:
       pop: true
 
   main:
+    - match: (?i)^(\xef\xbb\xbf)?(?=\s*(/\*|//|import\b|(component|abstract\s*component|final\s*component|interface)(\s+|{)))
+      push: scope:source.cfml.script
+      captures:
+        1: bom
     - match: ^\xef\xbb\xbf
       scope: bom
-    - match: (?i)(?=^\s*(/\*|//|import\b|(component|abstract\s*component|final\s*component|interface)(\s+|{)))
-      push: scope:source.cfml.script
     - include: comments
     - match: (?i)(?=<cf(component|interface)\b)
       push:
@@ -76,7 +78,8 @@ contexts:
     - match: (?i:\b(?:extends)\b)
       scope: entity.other.attribute-name.cfml storage.modifier.extends.cfml
       push:
-        -   - meta_scope: meta.class.inheritance.cfml
+        -   - meta_include_prototype: false
+            - meta_scope: meta.class.inheritance.cfml
             - include: immediately-pop
         -   - match: '='
               scope: punctuation.separator.key-value.cfml
@@ -532,6 +535,7 @@ contexts:
           push:
             - meta_content_scope: source.cfml.script
             - include: template-expression-contents
+
   template-expression-set:
     - match: '##'
       scope: constant.character.escape.hash.cfml
@@ -560,6 +564,7 @@ contexts:
             - clear_scopes: 1
             - meta_content_scope: source.sql source.cfml.script
             - include: template-expression-contents
+
   sql-character-escape:
     - match: \\(?=#)
       scope: constant.character.escape.sql
@@ -578,6 +583,7 @@ contexts:
             - clear_scopes: 1
             - meta_content_scope: source.cfml.script
             - include: template-expression-contents
+
   template-expression-contents:
     - match: (?=#)
       pop: true

@@ -22,10 +22,12 @@ contexts:
       pop: true
 
   main:
+    - match: (?i)^(\xef\xbb\xbf)?(?=\s*(/\*|//|import\b|(component|abstract\s*component|final\s*component|interface)(\s+|{)))
+      push: scope:source.cfml.script
+      captures:
+        1: bom
     - match: ^\xef\xbb\xbf
       scope: bom
-    - match: (?i)(?=^\s*(/\*|//|import\b|(component|abstract\s*component|final\s*component|interface)(\s+|{)))
-      push: scope:source.cfml.script
     - include: comments
     - match: (?i)(?=<cf(component|interface)\b)
       push:

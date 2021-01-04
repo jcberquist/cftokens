@@ -126,7 +126,7 @@ contexts:
         - include: else-pop
 
   component:
-    - match: (?i)^(?:\xef\xbb\xbf)?\s*(?:(abstract|final)\s+)?(component)\b
+    - match: (?i)(?:(abstract|final)\s+)?(component)\b
       captures:
         1: storage.modifier.cfml
         2: storage.type.class.cfml
