@@ -1,0 +1,125 @@
+name: release
+on:
+  push:
+    branches: [master]
+    paths: [Cargo.toml]
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      current: ${{ steps.inspect.outputs.current }}
+      previous: ${{ steps.inspect.outputs.previous }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
+
+      - name: Check for version update
+        id: inspect
+        run: |-
+          set -e
+          export CURRENT_VERSION=$(sed -n 's/^\s*version\s*=\s*"\([^"]*\)".*$/\1/p' Cargo.toml)
+          echo "::set-output name=current::$CURRENT_VERSION"
+          git checkout -q HEAD^
+          export PREV_VERSION=$(sed -n 's/^\s*version\s*=\s*"\([^"]*\)".*$/\1/p' Cargo.toml)
+          echo "::set-output name=previous::$PREV_VERSION"
+
+      - name: Check Syntect cache
+        uses: actions/cache@v2
+        id: syntect-cache
+        if: ${{ steps.inspect.outputs.current != steps.inspect.outputs.previous }}
+        with:
+          path: |-
+            syntect/assets
+            syntect/target
+          key: syntect-assets-${{ hashFiles('Packages/*/*.sublime-syntax', 'CFML/*.sublime-syntax') }}
+
+      - name: Compile Syntect assets
+        if: ${{ !steps.syntect-cache.outputs.cache-hit }}
+        run: |-
+          set -e
+          git clone --depth 1 https://github.com/trishume/syntect.git
+          rm -r syntect/testdata/*
+          cp -r Packages/{HTML,JavaScript,SQL,CSS}/ syntect/testdata/
+          mkdir syntect/testdata/CFML
+          cp CFML/*.sublime-syntax syntect/testdata/CFML/
+          cd syntect
+          cargo run --features=metadata --example gendata -- synpack testdata \
+            assets/default_newlines.packdump \
+            assets/default_nonewlines.packdump \
+            assets/default_metadata.packdump
+
+  build:
+    runs-on: ${{ matrix.platform }}
+    needs: preflight
+    if: ${{ needs.preflight.outputs.current != needs.preflight.outputs.previous }}
+    strategy:
+      matrix:
+        include:
+          - platform: ubuntu-latest
+            binary: cftokens
+            name: cftokens_linux
+          - platform: windows-latest
+            binary: cftokens.exe
+            name: cftokens.exe
+          - platform: macos-latest
+            binary: cftokens
+            name: cftokens_osx
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Clone Syntect repo
+        run: git clone --depth 1 https://github.com/trishume/syntect.git
+
+      - name: Fetch cached Syntect assets
+        uses: actions/cache@v2
+        with:
+          path: syntect/assets
+          # this should always be a hit, because it's created in the previous job
+          key: syntect-assets-${{ hashFiles('Packages/*/*.sublime-syntax', 'CFML/*.sublime-syntax') }}
+
+      - name: Build cftokens
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.name }}
+          path: target/release/${{ matrix.binary }}
+
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+
+      - name: Create release
+        run: |-
+          set -e
+          echo "::group::Create release"
+          curl -sSf -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"tag_name": "v${{ needs.preflight.outputs.current }}"}' \
+            https://api.github.com/repos/${{ github.repository }}/releases | tee release.json
+          echo ::endgroup::
+
+          UPLOAD_URL=$(jq -r '.upload_url' < release.json | sed 's/{[^}]*}//')
+          for DIR in $(ls artifacts); do
+            echo "::group::Upload: $DIR"
+            FILENAME=$(ls artifacts/$DIR)
+            curl -sSf -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @artifacts/$DIR/$FILENAME \
+              $UPLOAD_URL?name=$DIR | jq
+            echo ::endgroup::
+          done
