@@ -31,9 +31,7 @@ jobs:
         id: syntect-cache
         if: ${{ steps.inspect.outputs.current != steps.inspect.outputs.previous }}
         with:
-          path: |-
-            syntect/assets
-            syntect/target
+          path: syntect/assets
           key: syntect-assets-${{ hashFiles('Packages/*/*.sublime-syntax', 'CFML/*.sublime-syntax') }}
 
       - name: Compile Syntect assets
