@@ -26,16 +26,8 @@ jobs:
           export PREV_VERSION=$(sed -n 's/^\s*version\s*=\s*"\([^"]*\)".*$/\1/p' Cargo.toml)
           echo "::set-output name=previous::$PREV_VERSION"
 
-      - name: Check Syntect cache
-        uses: actions/cache@v2
-        id: syntect-cache
-        if: ${{ steps.inspect.outputs.current != steps.inspect.outputs.previous }}
-        with:
-          path: syntect/assets
-          key: syntect-assets-${{ hashFiles('Packages/*/*.sublime-syntax', 'CFML/*.sublime-syntax') }}
-
       - name: Compile Syntect assets
-        if: ${{ !steps.syntect-cache.outputs.cache-hit }}
+        if: ${{ steps.inspect.outputs.current != steps.inspect.outputs.previous }}
         run: |-
           set -e
           git clone --depth 1 https://github.com/trishume/syntect.git
@@ -48,6 +40,14 @@ jobs:
             assets/default_newlines.packdump \
             assets/default_nonewlines.packdump \
             assets/default_metadata.packdump
+          tar -czf assets/syntect_assets.tar.gz assets/*
+
+      - name: Upload Syntect assets
+        if: ${{ steps.inspect.outputs.current != steps.inspect.outputs.previous }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: syntect_assets.tar.gz
+          path: syntect/assets/syntect_assets.tar.gz
 
   build:
     runs-on: ${{ matrix.platform }}
@@ -72,15 +72,15 @@ jobs:
       - name: Clone Syntect repo
         run: git clone --depth 1 https://github.com/trishume/syntect.git
 
-      - name: Fetch cached Syntect assets
-        uses: actions/cache@v2
+      - name: Fetch Syntect assets
+        uses: actions/download-artifact@v2
         with:
-          path: syntect/assets
-          # this should always be a hit, because it's created in the previous job
-          key: syntect-assets-${{ hashFiles('Packages/*/*.sublime-syntax', 'CFML/*.sublime-syntax') }}
+          name: syntect_assets.tar.gz
 
       - name: Build cftokens
-        run: cargo build --release
+        run: |-
+          tar -xzf syntect_assets.tar.gz -C syntect
+          cargo build --release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2
@@ -110,6 +110,7 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/releases | tee release.json
           echo ::endgroup::
 
+          rm -r artifacts/syntect_assets.tar.gz
           UPLOAD_URL=$(jq -r '.upload_url' < release.json | sed 's/{[^}]*}//')
           for DIR in $(ls artifacts); do
             echo "::group::Upload: $DIR"
