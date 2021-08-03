@@ -57,13 +57,17 @@ jobs:
       matrix:
         include:
           - platform: ubuntu-latest
-            binary: cftokens
+            path: target/release/cftokens
             name: cftokens_linux
+          - platform: ubuntu-latest
+            path: target/x86_64-unknown-linux-musl/release/cftokens
+            name: cftokens_linux_musl
+            target: --target x86_64-unknown-linux-musl
           - platform: windows-latest
-            binary: cftokens.exe
+            path: target/release/cftokens.exe
             name: cftokens.exe
           - platform: macos-latest
-            binary: cftokens
+            path: target/release/cftokens
             name: cftokens_osx
     steps:
       - name: Checkout
@@ -77,16 +81,23 @@ jobs:
         with:
           name: syntect_assets.tar.gz
 
+      - name: Install musl tools
+        if: ${{ matrix.name == 'cftokens_linux_musl' }}
+        run: |-
+          sudo apt update
+          sudo apt install -y musl-tools
+          rustup target install x86_64-unknown-linux-musl
+
       - name: Build cftokens
         run: |-
           tar -xzf syntect_assets.tar.gz -C syntect
-          cargo build --release
+          cargo build --release ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.name }}
-          path: target/release/${{ matrix.binary }}
+          path: ${{ matrix.path }}
 
   release:
     runs-on: ubuntu-latest
