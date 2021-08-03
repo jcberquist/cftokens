@@ -50,6 +50,7 @@ jobs:
           path: syntect/assets/syntect_assets.tar.gz
 
   build:
+    name: 'build: ${{ matrix.name }}'
     runs-on: ${{ matrix.platform }}
     needs: preflight
     if: ${{ needs.preflight.outputs.current != needs.preflight.outputs.previous }}
