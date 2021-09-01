@@ -14,7 +14,6 @@ variables:
   storage_types: \b(?:any|array|binary|boolean|component|date|guid|numeric|query|string|struct|xml|uuid)\b
   func_assignment_lookahead: \s*\bfunction\b
   func_lookahead: ({{storage_modifier}}\s+)?({{storage_modifier}}\s+)?({{dot_path_identifier}}(\[\])?\s+)?\bfunction\b
-
   sql_lookahead: >-
     (?x:
       (?i:select\s+($|\*|top\b|{{dot_path_identifier}}\s*(?:(?:\s+as\s+{{identifier}}\s*)?,|$|\s+from)))|
@@ -749,7 +748,7 @@ contexts:
               pop: true
             - match: (?i){{storage_modifier}}
               scope: storage.modifier.cfml
-            - match: (?=[A-Za-z])
+            - match: (?=[_$[:alpha:]])
               push: storage-types
 
   arrow-function-declaration:
@@ -950,23 +949,23 @@ contexts:
               pop: true
             - include: expression-push
         -   - match: "'"
-              scope: punctuation.definition.string.begin.cfml
               set:
                 -   - meta_scope: meta.string.quoted.single.cfml string.quoted.single.cfml
                     - match: "'"
-                      scope: punctuation.definition.string.end.cfml
                       pop: true
+                      scope: punctuation.definition.string.end.cfml
                 -   - include: storage-types
                     - include: else-pop
-            - match: '"'
               scope: punctuation.definition.string.begin.cfml
+            - match: '"'
               set:
                 -   - meta_scope: meta.string.quoted.double.cfml string.quoted.double.cfml
                     - match: '"'
-                      scope: punctuation.definition.string.end.cfml
                       pop: true
+                      scope: punctuation.definition.string.end.cfml
                 -   - include: storage-types
                     - include: else-pop
+              scope: punctuation.definition.string.begin.cfml
     - include: else-pop
 
   property-access:
@@ -1168,6 +1167,7 @@ contexts:
     - match: '{{identifier}}'
       scope: variable.other.readwrite.cfml
       pop: true
+
   struct-property:
     - match: '{{constant_identifier}}'
       scope: meta.property.constant.cfml
@@ -1551,4 +1551,3 @@ contexts:
   angle-bracket-pop:
     - match: (?=/?>)
       pop: true
-
