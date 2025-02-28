@@ -10,7 +10,6 @@ extern crate walkdir;
 
 pub mod scopes;
 
-use std::error::Error;
 use std::fs::{create_dir_all, File};
 use std::io::prelude::*;
 use std::io::{BufRead, BufReader};
@@ -217,21 +216,17 @@ fn write_to_file(path_string: &String, json: &String) {
     let display = path.display();
 
     match create_dir_all(&path.parent().unwrap()) {
-        Err(e) => panic!(
-            "couldn't create directory to {}: {}",
-            display,
-            e.description()
-        ),
+        Err(e) => panic!("couldn't create directory to {}: {}", display, e),
         Ok(_) => {}
     }
 
     let mut file = match File::create(&path) {
-        Err(e) => panic!("couldn't create {}: {}", display, e.description()),
+        Err(e) => panic!("couldn't create {}: {}", display, e),
         Ok(file) => file,
     };
 
     match file.write_all(&json.as_bytes()) {
-        Err(e) => panic!("couldn't write to {}: {}", display, e.description()),
+        Err(e) => panic!("couldn't write to {}: {}", display, e),
         Ok(_) => {}
     }
 }
@@ -242,7 +237,7 @@ pub fn tokenize(ss: &SyntaxSet, path: String) -> Result<String, String> {
 
     let mut reader: Box<dyn BufRead> = match path.as_str() {
         "-" => Box::new(BufReader::new(std::io::stdin())),
-        _ => Box::new(BufReader::new(File::open(&path).unwrap()))
+        _ => Box::new(BufReader::new(File::open(&path).unwrap())),
     };
 
     let mut line = String::new();
@@ -252,9 +247,9 @@ pub fn tokenize(ss: &SyntaxSet, path: String) -> Result<String, String> {
 
     while reader.read_line(&mut line).unwrap() > 0 {
         {
-            let ops = state.parse_line(&line, &ss);
+            let ops = state.parse_line(&line, &ss).unwrap();
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
-                stack.apply(op);
+                stack.apply(op).unwrap();
                 if s.is_empty() {
                     continue;
                 }
@@ -297,7 +292,7 @@ pub fn parse(ss: &SyntaxSet, path: String) -> Result<String, String> {
 
     let mut reader: Box<dyn BufRead> = match path.as_str() {
         "-" => Box::new(BufReader::new(std::io::stdin())),
-        _ => Box::new(BufReader::new(File::open(&path).unwrap()))
+        _ => Box::new(BufReader::new(File::open(&path).unwrap())),
     };
 
     let mut line = String::new();
@@ -309,9 +304,9 @@ pub fn parse(ss: &SyntaxSet, path: String) -> Result<String, String> {
 
     while reader.read_line(&mut line).unwrap() > 0 {
         {
-            let ops = state.parse_line(&line, &ss);
+            let ops = state.parse_line(&line, &ss).unwrap();
             for (s, op) in ScopeRegionIterator::new(&ops, &line) {
-                stack.apply(op);
+                stack.apply(op).unwrap();
                 if s.is_empty() {
                     continue;
                 }
