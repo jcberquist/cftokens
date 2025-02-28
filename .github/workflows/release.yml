@@ -44,7 +44,7 @@ jobs:
 
       - name: Upload Syntect assets
         if: ${{ steps.inspect.outputs.current != steps.inspect.outputs.previous }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: syntect_assets.tar.gz
           path: syntect/assets/syntect_assets.tar.gz
@@ -95,7 +95,7 @@ jobs:
           cargo build --release ${{ matrix.target }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.path }}
