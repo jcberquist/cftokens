@@ -1182,14 +1182,14 @@ contexts:
     - include: immediately-pop
 
   tag-in-script:
-    - match: (?i)\bproperty\b(?=(\s+{{identifier}}\b|\s*[\n\{]))
+    - match: (?i)\bproperty\b(?=(\s+{{dot_path_identifier}}\b|\s*[\n\{]))
       scope: entity.name.tag.script.cfml
       push:
         -   - meta_scope: meta.tag.script.cfml meta.tag.property.cfml
             - match: (?=[;{])
               pop: true
             - include: scope:embedding.cfml#cfproperty-attributes
-        -   - match: ({{identifier}})\s+({{identifier}}\b)(?!\s*=)
+        -   - match: ({{dot_path_identifier}})\s+({{identifier}}\b)(?!\s*=)
               captures:
                 1: storage.type.cfml
                 2: meta.string.unquoted.cfml string.unquoted.cfml meta.tag.property.name.cfml
