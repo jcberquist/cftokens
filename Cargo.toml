@@ -1,6 +1,6 @@
 [package]
 name = "cftokens"
-version = "0.16.11"
+version = "0.16.12"
 authors = ["John Berquist <jcberquist@gmail.com>"]
 
 [dependencies]

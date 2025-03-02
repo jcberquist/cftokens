@@ -21,10 +21,10 @@ jobs:
         run: |-
           set -e
           export CURRENT_VERSION=$(sed -n 's/^\s*version\s*=\s*"\([^"]*\)".*$/\1/p' Cargo.toml)
-          echo "::set-output name=current::$CURRENT_VERSION"
+          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           git checkout -q HEAD^
           export PREV_VERSION=$(sed -n 's/^\s*version\s*=\s*"\([^"]*\)".*$/\1/p' Cargo.toml)
-          echo "::set-output name=previous::$PREV_VERSION"
+          echo "previous=$PREV_VERSION" >> $GITHUB_OUTPUT
 
       - name: Compile Syntect assets
         if: ${{ steps.inspect.outputs.current != steps.inspect.outputs.previous }}
@@ -69,7 +69,11 @@ jobs:
             name: cftokens.exe
           - platform: macos-latest
             path: target/release/cftokens
-            name: cftokens_osx
+            name: cftokens_osx_arm
+          - platform: macos-latest
+            path: target/x86_64-apple-darwin/release/cftokens
+            name: cftokens_osx_x86_64
+            target: --target x86_64-apple-darwin
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -89,6 +93,10 @@ jobs:
           sudo apt install -y musl-tools
           rustup target install x86_64-unknown-linux-musl
 
+      - name: Add target x86_64-apple-darwin
+        if: ${{ matrix.name == 'cftokens_osx_x86_64' }}
+        run: rustup target install x86_64-apple-darwin
+
       - name: Build cftokens
         run: |-
           tar -xzf syntect_assets.tar.gz -C syntect
@@ -100,11 +108,35 @@ jobs:
           name: ${{ matrix.name }}
           path: ${{ matrix.path }}
 
+  osx-universal-binary:
+    runs-on: macos-latest
+    needs:
+      - preflight
+      - build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create OSX universal binary
+        run: |-
+          lipo -create -output cftokens_osx \
+            artifacts/cftokens_osx_arm/cftokens \
+            artifacts/cftokens_osx_x86_64/cftokens
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cftokens_osx
+          path: cftokens_osx
+
   release:
     runs-on: ubuntu-latest
     needs:
       - preflight
       - build
+      - osx-universal-binary
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
