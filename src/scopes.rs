@@ -33,40 +33,58 @@ impl<'a> ContainerScope<'a> {
     }
 }
 
-pub const DELIMITED_SCOPES: [(&str, &str, &str, &str); 7] = [
+pub const DELIMITED_SCOPES: [(&str, &str, &str, &str); 10] = [
     (
         "struct",
-        "meta.struct-literal.cfml punctuation.section.block.begin.cfml",
+        "meta.struct-literal.cfml punctuation.section.mapping.begin.cfml",
         "punctuation.separator.struct-literal.cfml",
-        "punctuation.section.block.end.cfml",
+        "punctuation.section.mapping.end.cfml",
+    ),
+    (
+        "struct",
+        "meta.mapping.cfml punctuation.section.mapping.begin.cfml",
+        "punctuation.separator.struct-literal.cfml",
+        "punctuation.section.mapping.end.cfml",
     ),
     (
         "array",
-        "meta.sequence.cfml punctuation.section.brackets.begin.cfml",
+        "meta.sequence.cfml punctuation.section.sequence.begin.cfml",
         "punctuation.separator.sequence.cfml",
-        "punctuation.section.brackets.end.cfml",
+        "punctuation.section.sequence.end.cfml",
     ),
     (
         "function-call",
-        "meta.function-call.parameters.cfml punctuation.section.group.begin.cfml",
+        "meta.function-call.arguments.cfml meta.group.cfml punctuation.section.group.begin.cfml",
         "punctuation.separator.function-call.cfml",
         "punctuation.section.group.end.cfml",
     ),
     (
         "function-call",
-        "meta.function-call.parameters.method.cfml punctuation.section.group.begin.cfml",
+        "meta.function-call.arguments.cfml punctuation.section.group.begin.cfml",
+        "punctuation.separator.function-call.cfml",
+        "punctuation.section.group.end.cfml",
+    ),
+    (
+        "function-call",
+        "meta.function-call.arguments.method.cfml meta.group.cfml punctuation.section.group.begin.cfml",
         "punctuation.separator.function-call.method.cfml",
         "punctuation.section.group.end.cfml",
     ),
     (
         "function-call",
-        "meta.function-call.parameters.support.cfml punctuation.section.group.begin.cfml",
+        "meta.function-call.arguments.method.cfml punctuation.section.group.begin.cfml",
+        "punctuation.separator.function-call.method.cfml",
+        "punctuation.section.group.end.cfml",
+    ),
+    (
+        "function-call",
+        "meta.function-call.arguments.support.cfml punctuation.section.group.begin.cfml",
         "punctuation.separator.function-call.support.cfml",
         "punctuation.section.group.end.cfml",
     ),
     (
         "function-call",
-        "meta.function-call.parameters.method.support.cfml punctuation.section.group.begin.cfml",
+        "meta.function-call.arguments.method.support.cfml punctuation.section.group.begin.cfml",
         "punctuation.separator.function-call.method.support.cfml",
         "punctuation.section.group.end.cfml",
     ),

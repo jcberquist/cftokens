@@ -13,6 +13,7 @@ pub mod scopes;
 use std::fs::{create_dir_all, File};
 use std::io::prelude::*;
 use std::io::{BufRead, BufReader};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -20,7 +21,7 @@ use scopes::{ContainerScope, DelimitedScope, CONTAINER_SCOPES, DELIMITED_SCOPES}
 use serde::ser::{Serialize, SerializeSeq, SerializeStruct, Serializer};
 use syntect::easy::ScopeRegionIterator;
 use syntect::highlighting::ScopeSelector;
-use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
+use syntect::parsing::{ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxSet};
 use walkdir::{DirEntry, WalkDir};
 
 pub struct Token {
@@ -231,51 +232,135 @@ fn write_to_file(path_string: &String, json: &String) {
     }
 }
 
-pub fn tokenize(ss: &SyntaxSet, path: String) -> Result<String, String> {
-    let syntax = ss.find_syntax_by_name("CFML").unwrap();
+pub fn load_syntax_set() -> SyntaxSet {
+    syntect::dumps::from_uncompressed_data(include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/cftokens.packdump"
+    )))
+    .expect("valid embedded cftokens syntax pack")
+}
+
+fn cfml_syntax(ss: &SyntaxSet) -> &syntect::parsing::SyntaxReference {
+    ss.find_syntax_by_scope(Scope::new("embedding.cfml").unwrap())
+        .expect("CFML syntax (embedding.cfml) missing from pack")
+}
+
+struct ParsedLine {
+    line: String,
+    ops: Vec<(usize, ScopeStackOp)>,
+}
+
+fn parse_error(path: &str, detail: impl std::fmt::Display) -> String {
+    format!("Unable to parse {}: {}", path, detail)
+}
+
+fn emit_parse_warnings(path: &str, line_number: usize, warnings: &[String]) {
+    if warnings.is_empty() || std::env::var_os("CFTOKENS_DEBUG").is_none() {
+        return;
+    }
+    for warning in warnings {
+        eprintln!("{}:{}: {}", path, line_number, warning);
+    }
+}
+
+fn check_ops(ops: &[(usize, ScopeStackOp)], line: &str) -> Result<(), String> {
+    let mut last = 0;
+    for &(pos, _) in ops {
+        if pos < last || pos > line.len() || !line.is_char_boundary(pos) {
+            return Err("inconsistent scope operations".to_string());
+        }
+        last = pos;
+    }
+    Ok(())
+}
+
+fn apply_replayed(
+    parsed: &mut [ParsedLine],
+    replayed: Vec<Vec<(usize, ScopeStackOp)>>,
+) -> Result<(), String> {
+    // Concatenated replays: syntect's handle_fail does flushed_ops.extend(...),
+    // so if two cross-line fails resolve within a single parse_line call,
+    // replayed.len() can exceed the number of buffered lines and suffix
+    // mapping would misattribute ops. This is an upstream API limitation
+    // (needs per-chunk offsets); treat overflow as a parse error.
+    let start = parsed
+        .len()
+        .checked_sub(replayed.len())
+        .ok_or_else(|| "replayed more lines than parsed".to_string())?;
+    for (i, replayed_ops) in replayed.into_iter().enumerate() {
+        check_ops(&replayed_ops, &parsed[start + i].line)?;
+        parsed[start + i].ops = replayed_ops;
+    }
+    Ok(())
+}
+
+fn parse_all_lines(ss: &SyntaxSet, path: &str) -> Result<Vec<ParsedLine>, String> {
+    let syntax = cfml_syntax(ss);
     let mut state = ParseState::new(syntax);
 
-    let mut reader: Box<dyn BufRead> = match path.as_str() {
+    let mut reader: Box<dyn BufRead> = match path {
         "-" => Box::new(BufReader::new(std::io::stdin())),
-        _ => Box::new(BufReader::new(File::open(&path).unwrap())),
+        _ => Box::new(BufReader::new(
+            File::open(path).map_err(|e| parse_error(path, e))?,
+        )),
     };
 
+    let mut parsed: Vec<ParsedLine> = Vec::new();
     let mut line = String::new();
-    let mut stack = ScopeStack::new();
 
+    while reader
+        .read_line(&mut line)
+        .map_err(|e| parse_error(path, e))?
+        > 0
+    {
+        let output = state
+            .parse_line(&line, ss)
+            .map_err(|e| parse_error(path, e))?;
+        emit_parse_warnings(path, parsed.len() + 1, &output.warnings);
+        if !output.replayed.is_empty() {
+            apply_replayed(&mut parsed, output.replayed).map_err(|e| parse_error(path, e))?;
+        }
+        check_ops(&output.ops, &line).map_err(|e| parse_error(path, e))?;
+        parsed.push(ParsedLine {
+            line: line.clone(),
+            ops: output.ops,
+        });
+        line.clear();
+    }
+
+    Ok(parsed)
+}
+
+pub fn tokenize(ss: &SyntaxSet, path: String) -> Result<String, String> {
+    let parsed = parse_all_lines(ss, &path)?;
+    let mut stack = ScopeStack::new();
     let mut tokens: Vec<Token> = Vec::new();
 
-    while reader.read_line(&mut line).unwrap() > 0 {
-        {
-            let ops = state.parse_line(&line, &ss).unwrap();
-            for (s, op) in ScopeRegionIterator::new(&ops, &line) {
-                stack.apply(op).unwrap();
-                if s.is_empty() {
-                    continue;
-                }
-
-                let scopes: Vec<String> = stack
-                    .as_slice()
-                    .iter()
-                    .skip(1)
-                    .map(|e| e.build_string())
-                    .collect();
-
-                let token = Token {
-                    text: s.to_string(),
-                    scopes,
-                };
-                tokens.push(token);
+    for record in &parsed {
+        for (s, op) in ScopeRegionIterator::new(&record.ops, &record.line) {
+            stack.apply(op).map_err(|e| parse_error(&path, e))?;
+            if s.is_empty() {
+                continue;
             }
+
+            let scopes: Vec<String> = stack
+                .as_slice()
+                .iter()
+                .skip(1)
+                .map(|e| e.build_string())
+                .collect();
+
+            tokens.push(Token {
+                text: s.to_string(),
+                scopes,
+            });
         }
-        line.clear();
     }
 
     Ok(format!("{}", json!(tokens)))
 }
 
 pub fn parse(ss: &SyntaxSet, path: String) -> Result<String, String> {
-    let syntax = ss.find_syntax_by_name("CFML").unwrap();
     let punctuation_selector = ScopeSelector::from_str("punctuation").unwrap();
 
     let mut delimited_scopes = Vec::new();
@@ -288,92 +373,84 @@ pub fn parse(ss: &SyntaxSet, path: String) -> Result<String, String> {
         container_scopes.push(ContainerScope::new(name, start, end))
     }
 
-    let mut state = ParseState::new(syntax);
-
-    let mut reader: Box<dyn BufRead> = match path.as_str() {
-        "-" => Box::new(BufReader::new(std::io::stdin())),
-        _ => Box::new(BufReader::new(File::open(&path).unwrap())),
-    };
-
-    let mut line = String::new();
+    let parsed = parse_all_lines(ss, &path)?;
     let mut stack = ScopeStack::new();
 
     let mut token_stack: Vec<Elements> = Vec::new();
     let cfscript = Element::new("cfml", "", &String::new(), "");
     token_stack.push(Elements::Element(cfscript));
 
-    while reader.read_line(&mut line).unwrap() > 0 {
-        {
-            let ops = state.parse_line(&line, &ss).unwrap();
-            for (s, op) in ScopeRegionIterator::new(&ops, &line) {
-                stack.apply(op).unwrap();
-                if s.is_empty() {
+    for record in &parsed {
+        for (s, op) in ScopeRegionIterator::new(&record.ops, &record.line) {
+            stack.apply(op).map_err(|e| parse_error(&path, e))?;
+            if s.is_empty() {
+                continue;
+            }
+
+            let stack_index = token_stack.len() - 1;
+            let scopes: Vec<String> = stack
+                .as_slice()
+                .iter()
+                .skip(1)
+                .map(|e| e.build_string())
+                .collect();
+            let scope_string = scopes.join(" ");
+
+            if token_stack[stack_index].will_pop(&s, &scope_string) {
+                if let Some(last) = token_stack.pop() {
+                    match token_stack.last_mut() {
+                        Some(parent) => parent.add_element(last),
+                        None => return Err(format!("Unable to parse {}", path)),
+                    }
+                    continue;
+                } else {
+                    return Err(format!("Unable to parse {}", path));
+                }
+            }
+
+            if punctuation_selector.does_match(stack.as_slice()).is_some() {
+                let n = scopes.len() - 1;
+                let base_scope_string = scopes[..n].join(" ");
+                let mut matched = false;
+
+                for ds in delimited_scopes.iter() {
+                    if scope_string.ends_with(ds.start) {
+                        let de = DelimitedElement::new(
+                            ds.name,
+                            &base_scope_string,
+                            ds.delimiter,
+                            ds.end,
+                        );
+                        token_stack.push(Elements::DelimitedElement(de));
+                        matched = true;
+                        break;
+                    }
+                }
+                if matched {
                     continue;
                 }
 
-                let stack_index = token_stack.len() - 1;
-                let scopes: Vec<String> = stack
-                    .as_slice()
-                    .iter()
-                    .skip(1)
-                    .map(|e| e.build_string())
-                    .collect();
-                let scope_string = scopes.join(" ");
-
-                if token_stack[stack_index].will_pop(&s, &scope_string) {
-                    if let Some(last) = token_stack.pop() {
-                        token_stack[stack_index - 1].add_element(last);
-                        continue;
-                    } else {
-                        panic!("The stack is empty.");
+                for cs in container_scopes.iter() {
+                    if scope_string.ends_with(cs.start) {
+                        let e = Element::new(cs.name, &s, &base_scope_string, cs.end);
+                        token_stack.push(Elements::Element(e));
+                        matched = true;
+                        break;
                     }
                 }
-
-                if punctuation_selector.does_match(stack.as_slice()).is_some() {
-                    let n = scopes.len() - 1;
-                    let base_scope_string = scopes[..n].join(" ");
-                    let mut matched = false;
-
-                    for ds in delimited_scopes.iter() {
-                        if scope_string.ends_with(ds.start) {
-                            let de = DelimitedElement::new(
-                                ds.name,
-                                &base_scope_string,
-                                ds.delimiter,
-                                ds.end,
-                            );
-                            token_stack.push(Elements::DelimitedElement(de));
-                            matched = true;
-                            break;
-                        }
-                    }
-                    if matched {
-                        continue;
-                    }
-
-                    for cs in container_scopes.iter() {
-                        if scope_string.ends_with(cs.start) {
-                            let e = Element::new(cs.name, &s, &base_scope_string, cs.end);
-                            token_stack.push(Elements::Element(e));
-                            matched = true;
-                            break;
-                        }
-                    }
-                    if matched {
-                        continue;
-                    }
+                if matched {
+                    continue;
                 }
-
-                let mut text = s.to_owned();
-                if !scope_string.ends_with("cfformat.ignore.cfml") {
-                    text = text.replace("\r", "")
-                }
-
-                let token = Token { text: text, scopes };
-                token_stack[stack_index].add_element(Elements::Token(token));
             }
+
+            let mut text = s.to_owned();
+            if !scope_string.ends_with("cfformat.ignore.cfml") {
+                text = text.replace("\r", "")
+            }
+
+            let token = Token { text: text, scopes };
+            token_stack[stack_index].add_element(Elements::Token(token));
         }
-        line.clear();
     }
 
     if token_stack.len() != 1 {
@@ -383,11 +460,27 @@ pub fn parse(ss: &SyntaxSet, path: String) -> Result<String, String> {
     Ok(format!("{}", json!(token_stack.last().unwrap())))
 }
 
-pub fn tokenize_file(ss: &SyntaxSet, cmd: &String, path: String) -> Result<String, String> {
-    if cmd == "tokenize" {
-        tokenize(&ss, path)
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
     } else {
-        parse(&ss, path)
+        "panic during parse".to_string()
+    }
+}
+
+pub fn tokenize_file(ss: &SyntaxSet, cmd: &String, path: String) -> Result<String, String> {
+    let path_for_err = path.clone();
+    match catch_unwind(AssertUnwindSafe(|| {
+        if cmd == "tokenize" {
+            tokenize(ss, path)
+        } else {
+            parse(ss, path)
+        }
+    })) {
+        Ok(result) => result,
+        Err(payload) => Err(parse_error(&path_for_err, panic_message(payload))),
     }
 }
 
@@ -460,4 +553,37 @@ pub fn tokenize_manifest(ss: &SyntaxSet, cmd: &String, src_path: String) -> Stri
     }
 
     format!("{}", json!(output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_replayed_errors_when_replay_exceeds_parsed_lines() {
+        let mut parsed = vec![ParsedLine {
+            line: "a\n".into(),
+            ops: vec![],
+        }];
+        let replayed = vec![vec![], vec![]];
+        assert!(apply_replayed(&mut parsed, replayed).is_err());
+    }
+
+    #[test]
+    fn apply_replayed_replaces_suffix() {
+        let mut parsed = vec![
+            ParsedLine {
+                line: "a\n".into(),
+                ops: vec![],
+            },
+            ParsedLine {
+                line: "b\n".into(),
+                ops: vec![],
+            },
+        ];
+        let replayed = vec![vec![(0, ScopeStackOp::Noop)]];
+        apply_replayed(&mut parsed, replayed).unwrap();
+        assert!(parsed[0].ops.is_empty());
+        assert_eq!(parsed[1].ops.len(), 1);
+    }
 }

@@ -1,9 +1,7 @@
 extern crate cftokens;
-extern crate syntect;
 
 use std::env;
 use std::process;
-use syntect::parsing::SyntaxSet;
 
 struct DirConfig {
     cmd: String,
@@ -92,7 +90,7 @@ fn main() {
         process::exit(1);
     });
 
-    let ss = SyntaxSet::load_defaults_newlines();
+    let ss = cftokens::load_syntax_set();
 
     let json = match config {
         Config::File(config) => match cftokens::tokenize_file(&ss, &config.cmd, config.src_path) {
